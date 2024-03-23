@@ -17,9 +17,3 @@ OpenHardwareMonitor can be downloaded from their official website: https://openh
 
 Repository:
 The official repository for this script can be found on GitHub: https://github.com/ShellNinja96/SystemMetrics.
-
- ___ _        _ _ _  _ _       _      ___  __ 
-/ __| |_  ___| | | \| (_)_ _  (_)__ _/ _ \/ / 
-\__ \ ' \/ -_) | | .' | | ' \ | / _' \_, / _ \
-|___/_||_\___|_|_|_|\_|_|_||_|/ \__,_|/_/\___/
-                            |__/
