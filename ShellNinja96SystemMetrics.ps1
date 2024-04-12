@@ -1,4 +1,18 @@
 #================================================================================================================================================#
+#=CHANGELOG======================================================================================================================================#
+
+<# 28.03.2024
+ - CHANGED DISCLAIMER TO SHOW OHM REPOSITORY INSTEAD OF WEBSITE SINCE IT HAS BEEN DOWN FOR DAYS
+ - ADDED OPTION TO DISABLE LINE 2
+ - MADE CODE MORE CONCISE BY TURNING ALL OHM QUERY FUNCTIONS (EXCEPT CPU CLOCK) INTO A SINGLE FUNCTION
+ - MADE THE RETRIEVAL OF METRICS DEPENDENT ON THEIR VISIBILITY SETTINGS, AVOIDING UNNECESSARY CODE EXECUTIONS
+ - ADDED NETWORK ADAPTER ERROR CHECKING SECTION
+ - TURNED GETDOWNLOADSPEED AND GETUPLOADSPEED INTO A SINGLE FUNCTION AVOIDING CODE REPETITION AND MINIMIZING CONSEQUENT SLEEP TIME TO 1 SECOND
+ - ADDED MAINLOOPSLEEP FUNCTION TO AVOID HIGH CPU DEMAND
+ - IMPROVED ON CONSOLE SIZE MANAGEMENT FOR SITUATIONS IN WHICH THE USER PREFERS THE SCRIPT TO NOT CHANGE CONSOLE SIZE DURING MAIN LOOP EXECUTION
+#>
+
+#================================================================================================================================================#
 #=DISCLAIMER=====================================================================================================================================#
 
 $disclaimer = @"
@@ -17,10 +31,10 @@ Modifying anything beyond the Settings section may break the script's functional
 Requirements:
 This script requires the OpenHardwareMonitor application to be installed on the system. 
 Please ensure that OpenHardwareMonitor is installed before using this script. 
-OpenHardwareMonitor can be downloaded from their official website: https://openhardwaremonitor.org/.
+OpenHardwareMonitor can be downloaded from its official repository: https://github.com/openhardwaremonitor
 
 Repository:
-The official repository for this script can be found on GitHub: https://github.com/ShellNinja96/SystemMetrics.
+The official repository for this script can be found on GitHub: https://github.com/ShellNinja96/SystemMetrics
 
 "@
 
@@ -36,62 +50,66 @@ $shellNinja96 = @"
 #=SETTINGS=======================================================================================================================================#
 
 <# SYSTEM SPECIFIC #>
-Set-ExecutionPolicy Restricted                            # Reset system script execution policy
-$networkAdapterName      = "vEthernet (External Switch)"  # Name of the Network Adapter whose speeds should be monitored
-$createStartupShortcut   = $true                          # Creates a shortcut for this scripts in the startup folder
-$replaceExistingShortcut = $false                         # If the shortcut already exists it gets replaced by a new one
+Set-ExecutionPolicy      Restricted                      # Reset system script execution policy
+$networkAdapterName      = "vEthernet (External Switch)" # Name of the Network Adapter whose speeds should be monitored
+$createStartupShortcut   = $true                         # Creates a shortcut for this script in the startup folder
+$replaceExistingShortcut = $false                        # If the shortcut already exists it gets replaced by a new one. $createStartupShortcut must also be set to true
+$mainLoopSleepDuration   = 1                             # Sleep time in seconds for each iteration of the main loop
 
 <# FLAG THRESHOLDS #>
-$cpuTempThreshold = 80.0                                  # Temperature in celsius at which the CPU temperature flag should be triggered
-$cpuLoadThreshold = 90.0                                  # Load percentage at which the CPU load flag should be triggered
-$gpuTempThreshold = 80.0                                  # Temperature in celsius at which the GPU temperature flag should be triggered
-$gpuCoreThreshold = 90.0                                  # Load percentage at which the GPU core load flag should be triggered
-$gpuMemThreshold  = 90.0                                  # Load percentage at which the GPU memory load flag should be triggered
-$ramLoadThreshold = 14                                    # Load in GB at which the flag should be triggered
+$cpuTempThreshold = 80.0                                 # Temperature in celsius at which the CPU temperature flag should be triggered
+$cpuLoadThreshold = 90.0                                 # Load percentage at which the CPU load flag should be triggered
+$gpuTempThreshold = 80.0                                 # Temperature in celsius at which the GPU temperature flag should be triggered
+$gpuCoreThreshold = 90.0                                 # Load percentage at which the GPU core load flag should be triggered
+$gpuMemThreshold  = 90.0                                 # Load percentage at which the GPU memory load flag should be triggered
+$ramLoadThreshold = 14                                   # Load in GB at which the flag should be triggered
 
 <# PERSONALIZATION #>
-$host.ui.RawUI.WindowTitle = "ShellNinja96 SystemMetrics" # Change the console host window title in which this script is being executed
-$indentation               = "  "                         # Indentation displayed at the begining of each line
-$spacing                   = " "                          # Spacing displayed between each metric
-$flagColor                 = "Red"                        # Color representing an exceeded metric threshold
-$cpuTempMetricName         = "CPUtemp"                    # String displayed above the CPU temperature metric
-$cpuTempMetricShow         = $true                        # Show the CPU temperature metric
-$cpuLoadMetricName         = "CPUload"                    # String displayed above the CPU load metric
-$cpuLoadMetricShow         = $true                        # Show the CPU load metric
-$cpuClockMetricName        = "CPUclck"                    # String displayed above the CPU clock speed metric
-$cpuClockMetricShow        = $true                        # Show the CPU clock speed metric
-$gpuTempMetricName         = "GPUtemp"                    # String displayed above the GPU temperature metric
-$gpuTempMetricShow         = $true                        # Show the GPU temperature metric
-$gpuCoreMetricName         = "GPUcore"                    # String displayed above the GPU core load metric
-$gpuCoreMetricShow         = $true                        # Show the GPU core load metric
-$gpuMemMetricName          = "GPUmem"                     # String displayed above the GPU memory load metric
-$gpuMemMetricShow          = $true                        # Show the GPU memory load metric
-$ramLoadMetricName         = "RAMload"                    # String displayed above the RAM memory load metric
-$ramLoadMetricShow         = $true                        # Show the RAM memory load metric
-$downloadSpeedMetricName   = "NETdown"                    # String displayed above the download speed metric
-$downloadSpeedMetricShow   = $true                        # Show the download speed metric
-$uploadSpeedMetricName     = "NETuplo"                    # String displayed above the upload speed metric
-$uploadSpeedMetricShow     = $true                        # Show the upload speed metric
-$changeConsoleSize         = $true                        # Changes the console host size in which this script is being executed
-$manualConsoleSize         = $false                       # Change to $true if you'd like to manually set the console size
-$manualConsoleWidth        = 74                           # Manually set the console width. $manualConsoleSize must be set to $true
-$manualConsoleHeight       = 3                            # Manually set the console height. $manualConsoleSize must be set to $true
-$showDisclaimer            = $true                        # Enable/disable the disclaimer displayment during script execution
-$showSexySplashScreen      = $true                        # Enable/disable a very sexy splash screen :)
+$indentation             = "  "                          # Indentation displayed at the beginning of each line
+$spacing                 = " "                           # Spacing displayed between each metric
+$flagColor               = "Red"                         # Color representing an exceeded metric threshold
+$showLine2               = $true                         # Enable/disable line of dashes that separates the metric names from their values
+$cpuTempMetricName       = "CPUtemp"                     # String displayed above the CPU temperature metric
+$cpuTempMetricShow       = $true                         # Show the CPU temperature metric
+$cpuLoadMetricName       = "CPUload"                     # String displayed above the CPU load metric
+$cpuLoadMetricShow       = $true                         # Show the CPU load metric
+$cpuClockMetricName      = "CPUclck"                     # String displayed above the CPU clock speed metric
+$cpuClockMetricShow      = $true                         # Show the CPU clock speed metric
+$gpuTempMetricName       = "GPUtemp"                     # String displayed above the GPU temperature metric
+$gpuTempMetricShow       = $true                         # Show the GPU temperature metric
+$gpuCoreMetricName       = "GPUcore"                     # String displayed above the GPU core load metric
+$gpuCoreMetricShow       = $true                         # Show the GPU core load metric
+$gpuMemMetricName        = "GPUmem"                      # String displayed above the GPU memory load metric
+$gpuMemMetricShow        = $true                         # Show the GPU memory load metric
+$ramLoadMetricName       = "RAMload"                     # String displayed above the RAM memory load metric
+$ramLoadMetricShow       = $true                         # Show the RAM memory load metric
+$downloadSpeedMetricName = "NETdown"                     # String displayed above the download speed metric
+$downloadSpeedMetricShow = $true                         # Show the download speed metric
+$uploadSpeedMetricName   = "NETuplo"                     # String displayed above the upload speed metric
+$uploadSpeedMetricShow   = $true                         # Show the upload speed metric
+$showDisclaimer          = $true                         # Enable/disable the disclaimer displayment
+$showSexySplashScreen    = $true                         # Enable/disable a very sexy splash screen :)
 
-<# ADVANCED SETTINGS #>
-$debug = $false                                           # Enable/disable debugging      
-$performErrorChecking = $true                             # Enable/disable variable type validation
+<# CONSOLE SETTINGS #>
+$consoleWindowTitle = "ShellNinja96 SystemMetrics"       # Change the console host window title in which this script is being executed
+$changeConsoleSize  = $true                              # Change to $false if you don't want the script to change the console window/buffer size during main loop execution
+$forceConsoleSize   = $false                             # Change to $true if you'd like to force the console window/buffer size with the values below. $changeConsoleSize must also be set to $true
+$forceConsoleWidth  = 74                                 # Force the console window/buffer width. $changeConsoleSize and $forceConsoleSize must be set to $true
+$forceConsoleHeight = 3                                  # Force the console window/buffer height. $changeConsoleSize and $forceConsoleSize must be set to $true
+
+<# ADVANCED SETTINGS #>     
+$performVariableValidation = $true                       # Enable/disable variable type validation
+$debug                     = $false                      # Enable/disable debugging 
 
 
 #================================================================================================================================================#
 #=ERROR=CHECKING=================================================================================================================================#
 
-# Validates all settings variable types, throws all found errors, pauses and exits if any was found 
-if ( $performErrorChecking ) {
+# Declares $errorFound variable as false
+$errorFound = $false
 
-    # Declares $errorFound varriable
-    $errorFound = $false
+# Validates all settings variable types, throws all found errors, pauses and exits if any was found 
+if ( $performVariableValidation ) {
 
     <# BOOLEAN TYPE SECTION #>
     if (-not($createStartupShortcut   -is [bool]))   { Write-Host "Settings Error: `$createStartupShortcut must be of type bool"     -ForegroundColor Red; $errorFound = $true }
@@ -106,7 +124,7 @@ if ( $performErrorChecking ) {
     if (-not($downloadSpeedMetricShow -is [bool]))   { Write-Host "Settings Error: `$downloadSpeedMetricShow must be of type bool"   -ForegroundColor Red; $errorFound = $true }
     if (-not($uploadSpeedMetricShow   -is [bool]))   { Write-Host "Settings Error: `$uploadSpeedMetricShow must be of type bool"     -ForegroundColor Red; $errorFound = $true }
     if (-not($changeConsoleSize       -is [bool]))   { Write-Host "Settings Error: `$changeConsoleSize must be of type bool"         -ForegroundColor Red; $errorFound = $true }
-    if (-not($manualConsoleSize       -is [bool]))   { Write-Host "Settings Error: `$manualConsoleSize must be of type bool"         -ForegroundColor Red; $errorFound = $true }
+    if (-not($forceConsoleSize        -is [bool]))   { Write-Host "Settings Error: `$forceConsoleSize must be of type bool"         -ForegroundColor Red; $errorFound = $true }
     if (-not($showDisclaimer          -is [bool]))   { Write-Host "Settings Error: `$showDisclaimer must be of type bool"            -ForegroundColor Red; $errorFound = $true }
     if (-not($showSexySplashScreen    -is [bool]))   { Write-Host "Settings Error: `$showSexySplashScreen must be of type bool"      -ForegroundColor Red; $errorFound = $true }
     if (-not($debug                   -is [bool]))   { Write-Host "Settings Error: `$debug must be of type bool"                     -ForegroundColor Red; $errorFound = $true }
@@ -124,6 +142,7 @@ if ( $performErrorChecking ) {
     if (-not($ramLoadMetricName       -is [string])) { Write-Host "Settings Error: `$ramLoadMetricName must be of type string"       -ForegroundColor Red; $errorFound = $true }
     if (-not($downloadSpeedMetricName -is [string])) { Write-Host "Settings Error: `$downloadSpeedMetricName must be of type string" -ForegroundColor Red; $errorFound = $true }
     if (-not($uploadSpeedMetricName   -is [string])) { Write-Host "Settings Error: `$uploadSpeedMetricName must be of type string"   -ForegroundColor Red; $errorFound = $true }
+    if (-not($consoleWindowTitle      -is [string])) { Write-Host "Settings Error: `$consoleWindowTitle must be of type string"      -ForegroundColor Red; $errorFound = $true }
 
     <# DOUBLE TYPE SECTION #>
     if (-not($cpuTempThreshold        -is [double])) { Write-Host "Settings Error: `$cpuTempThreshold must be of type double"        -ForegroundColor Red; $errorFound = $true }
@@ -133,20 +152,101 @@ if ( $performErrorChecking ) {
     if (-not($gpuMemThreshold         -is [double])) { Write-Host "Settings Error: `$gpuMemThreshold must be of type double"         -ForegroundColor Red; $errorFound = $true }
 
     <# INTEGER TYPE SECTION #>
+    if (-not($mainLoopSleepDuration   -is [int]))    { Write-Host "Settings Error: `$mainLoopSleepDuration must be of type integer"  -ForegroundColor Red; $errorFound = $true }
     if (-not($ramLoadThreshold        -is [int]))    { Write-Host "Settings Error: `$ramLoadThreshold must be of type integer"       -ForegroundColor Red; $errorFound = $true }
-    if (-not($manualConsoleWidth      -is [int]))    { Write-Host "Settings Error: `$ramLoadThreshold must be of type integer"       -ForegroundColor Red; $errorFound = $true }
-    if (-not($manualConsoleHeight     -is [int]))    { Write-Host "Settings Error: `$ramLoadThreshold must be of type integer"       -ForegroundColor Red; $errorFound = $true }
+    if (-not($forceConsoleWidth       -is [int]))    { Write-Host "Settings Error: `$forceConsoleWidth must be of type integer"     -ForegroundColor Red; $errorFound = $true }
+    if (-not($forceConsoleHeight      -is [int]))    { Write-Host "Settings Error: `$forceConsoleHeight must be of type integer"    -ForegroundColor Red; $errorFound = $true }
 
     <# COLOR TYPE SECTION #>
-    if (-not(([System.Enum]::GetNames([System.ConsoleColor]) -contains $flagColor))) { Write-Host "Settings Error: `$flagColor must be a valid color" -ForegroundColor Red; Write-Host "Valid colors: $([System.Enum]::GetNames([System.ConsoleColor]) -join ', ')"; $errorFound = $true }
+    if (-not(([System.Enum]::GetNames([System.ConsoleColor]) -contains $flagColor))) { Write-Host "Settings Error: `$flagColor must be a valid color string" -ForegroundColor Red; Write-Host "Valid color strings: $([System.Enum]::GetNames([System.ConsoleColor]) -join ', ')"; $errorFound = $true }
 
-    # If an error was found, pauses the script and then exits
-    if ($errorFound) { pause; exit }
+}
+
+# Validates $networkAdapterName and assigns $networkAdapter for later usage if network related metrics visibility is enabled
+if ( $downloadSpeedMetricShow -or $uploadSpeedMetricShow) {
+    $networkAdapter = Get-NetAdapter | Where-Object {$_.Name -eq $networkAdapterName}
+    if (-not $networkAdapter) {
+        Write-Host "Settings Error: `$networkAdapterName must be a valid NetAdapter.Name string" -ForegroundColor Red
+        Write-Host "Valid NetAdapter.Name strings: $((Get-NetAdapter | Select-Object -ExpandProperty Name) -join ", ")"
+        $errorFound = $true
+    }
+}
+
+# If an error was found, pauses the script and then exits
+if ($errorFound) { pause; exit }
+
+#================================================================================================================================================#
+#=FUNCTIONS======================================================================================================================================#
+
+function SetConsoleSize {
+    Param(
+        [parameter(Mandatory=$true)]
+        [int]$Height,
+        [parameter(Mandatory=$true)]
+        [int]$Width
+    )
+
+    # Retrieves the current buffer and window size of the console window
+    $ConBuffer  = $host.ui.RawUI.BufferSize
+    $ConSize    = $host.ui.RawUI.WindowSize
+    $currWidth  = $ConSize.Width
+    $currHeight = $ConSize.Height
+
+    # if height is too large, set to max allowed size
+    if ($Height -gt $host.UI.RawUI.MaxPhysicalWindowSize.Height) {
+        $Height = $host.UI.RawUI.MaxPhysicalWindowSize.Height
+    }
+
+    # if width is too large, set to max allowed size
+    if ($Width -gt $host.UI.RawUI.MaxPhysicalWindowSize.Width) {
+        $Width = $host.UI.RawUI.MaxPhysicalWindowSize.Width
+    }
+
+    # If the Buffer is wider than the new console setting, first reduce the width
+    If ($ConBuffer.Width -gt $Width ) {
+    $currWidth = $Width
+    }
+    # If the Buffer is higher than the new console setting, first reduce the height
+    If ($ConBuffer.Height -gt $Height ) {
+        $currHeight = $Height
+    }
+    # initial resizing if needed
+    $host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.size($currWidth,$currHeight)
+
+    # Set the Buffer
+    $host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.size($Width,$Height)
+
+    # Now set the WindowSize
+    $host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.size($Width,$Height)
 
 }
 
 #================================================================================================================================================#
-#=FUNCTIONS======================================================================================================================================#
+
+function GetAutoConsoleWidth {
+    Param(
+        [parameter(Mandatory=$true)]
+        [array]$hardwareMetrics
+    )
+
+    # Initialize the variable to hold the total length of line2
+    $line2Length = 0
+
+    # Loop through each hardware metric object in the array
+    for ($i = 0; $i -lt $hardwareMetrics.Length; $i++) {
+        # If the current index of $hardwareMetrics Show property is $true, add the length of the Line2 property string to $line2Length
+        if ( $hardwareMetrics[$i].Show ) { $line2Length += $hardwareMetrics[$i].Line2.Length }
+    }
+
+    # Add the additional length required for indentation on both sides of Line2
+    $line2Length += ($indentation.Length * 2)
+
+    # Return the calculated total console width required for correctly displaying all hardware metrics
+    return $line2Length
+
+}
+
+#================================================================================================================================================#
 
 function ShowDisclaimer {
 
@@ -163,6 +263,7 @@ function ShowSexySplashScreen {
 
     Clear-Host
     SetConsoleSize -Height 5 -Width 48
+    
     $sexyColors = @( "Blue", "Green", "Cyan", "Red", "Magenta", "Yellow" )
 
     for ($i = 1; $i -le 7; $i++) {
@@ -199,7 +300,6 @@ function CreateStartupShortcut {
     # Define the path for the shortcut file
     $shortcutFilePath = [System.IO.Path]::Combine($startupFolderPath, "ShellNinja96SystemMetrics.lnk")
 
-
     # If the shorcut doesn't exist, or if the shortcut exists and $replaceExistingShortcut set to $true
     if ((-not (Test-Path -Path $shortcutFilePath)) -or ((Test-Path -Path $shortcutFilePath) -and $replaceExistingShortcut)) {
 
@@ -218,7 +318,7 @@ function CreateStartupShortcut {
         $shortcut.IconLocation = "%SystemRoot%\System32\SHELL32.dll,12"
         $shortcut.Save()
 
-        # Let user know that a shortcut has been created and that it should be ran as Adminsitrator
+        # Let user know that a shortcut has been created and that it should be ran as Administrator
         Write-Host "Shortcut created in:" -ForegroundColor Yellow
         Write-Host "$startupFolderPath`n"
         Write-Host "Modify its properties so that it runs as administrator." -ForegroundColor Yellow
@@ -281,35 +381,23 @@ function StartOpenHardwareMonitor {
 
 #================================================================================================================================================#
 
-function GetCPUTemperature {
+function GetOHMMetric {
+    param (
+        [parameter(Mandatory=$true)]
+        [string]$query,
+        [parameter(Mandatory=$true)]
+        [int]$roundTo        
+    )
 
-    # Get the temperature object
-    $temperature = Get-WmiObject -Namespace "root\OpenHardwareMonitor" -Query "SELECT * FROM Sensor WHERE SensorType='Temperature' AND Name LIKE '%CPU Package%'"
+    # Get the object from the passed $query parameter and then extract its value
+    $value = (Get-WmiObject -Namespace "root\OpenHardwareMonitor" -Query $query) | Select-Object -ExpandProperty Value
 
-    # Extract the temperature value
-    $temperatureValue = $temperature | Select-Object -ExpandProperty Value
-
-    # Return the temperature value
-    return [Math]::Round($temperatureValue, 2)
-
-}
-
-#================================================================================================================================================#
-
-function GetCPULoad {
-
-    # Get the load object
-    $load = Get-WmiObject -Namespace "root\OpenHardwareMonitor" -Query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%CPU Total%'"
-    
-    # Extract the load value
-    $loadValue = $load | Select-Object -ExpandProperty Value
-
-    # Return the load value (rounded to two decimal points)
-    return [Math]::Round($loadValue, 2)
+    # Return the rounded value based on $roundTo parameter.
+    return [Math]::Round($value, $roundTo)
 
 }
 
-#================================================================================================================================================#
+#===============================================================================================================================================#
 
 function GetCPUClock {
     # Get the clock objects for CPU cores
@@ -325,102 +413,22 @@ function GetCPUClock {
     return [Math]::Round($clockValue)
 }
 
-#================================================================================================================================================#
-
-function GetGPUTemperature {
-
-    # Get the temperature object
-    $temperature = Get-WmiObject -Namespace "root\OpenHardwareMonitor" -Query "SELECT * FROM Sensor WHERE SensorType='Temperature' AND Name LIKE '%GPU%'"
-
-    # Extract the temperature value
-    $temperatureValue = $temperature | Select-Object -ExpandProperty Value
-
-    # Return the temperature value
-    return [Math]::Round($temperatureValue, 2)
-
-}
-
-#================================================================================================================================================#
-
-function GetGPUCoreLoad {
-
-    # Get the load object
-    $load = Get-WmiObject -Namespace "root\OpenHardwareMonitor" -Query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%GPU Core%'"
-    
-    # Extract the load value
-    $loadValue = $load | Select-Object -ExpandProperty Value
-
-    # Return the load value
-    return $loadValue
-
-}
-
-#================================================================================================================================================#
-
-function GetGPUMemoryLoad {
-
-    # Get the load object
-    $load = Get-WmiObject -Namespace "root\OpenHardwareMonitor" -Query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%GPU Memory%'"
-    
-    # Extract the load value
-    $loadValue = $load | Select-Object -ExpandProperty Value
-
-    # Return the load value (rounded to two decimal points)
-    return [Math]::Round($loadValue, 2)
-
-}
-
-#================================================================================================================================================#
-
-function GetRAMLoad {
-
-    # Get the load object
-    $load = Get-WmiObject -Namespace "root\OpenHardwareMonitor" -Query "SELECT * FROM Sensor WHERE SensorType='Data' AND Name LIKE '%Used Memory%'"
-    
-    # Extract the load value
-    $loadValue = $load | Select-Object -ExpandProperty Value
-
-    # Return the load value
-    return [Math]::Round($loadValue, 2)
-
-}
-
 #===============================================================================================================================================#
 
-function GetDownloadSpeed {
+function GetNetworkSpeed {
 
-    # Get the network adapter
-    $networkAdapter = Get-NetAdapter | Where-Object {$_.Name -eq $networkAdapterName}
+    # Get-NetAdapterStatistics sleep 1 second and Get-NetAdapterStatistics again.
+    $networkStatistics1 = Get-NetAdapterStatistics -Name $networkAdapter.Name
+    Start-Sleep -Seconds 1
+    $networkStatistics2 = Get-NetAdapterStatistics -Name $networkAdapter.Name
 
-    # If the network adapter is found, 
-    if ($networkAdapter) {
-        $networkStatistics1 = Get-NetAdapterStatistics -Name $networkAdapter.Name
-        Start-Sleep -Seconds 1
-        $networkStatistics2 = Get-NetAdapterStatistics -Name $networkAdapter.Name
-        $downloadSpeed = ($networkStatistics2.ReceivedBytes - $networkStatistics1.ReceivedBytes) * 8 / 1e6
-        return [Math]::Round($downloadSpeed)
-    } else {
-        return " X "
-    }
-}
+    # Calculate speeds and convert them from bytes per second to megabits per second if metric visibility enabled in settings, else skip calculation, metric is $null
+    if ( $downloadSpeedMetricShow ) { $downloadSpeed = [Math]::Round((($networkStatistics2.ReceivedBytes - $networkStatistics1.ReceivedBytes) * 8 / 1e6)) } else { $downloadSpeed = $null }
+    if ( $uploadSpeedMetricShow   ) { $uploadSpeed   = [Math]::Round((($networkStatistics2.SentBytes     - $networkStatistics1.SentBytes    ) * 8 / 1e6)) } else { $uploadSpeed   = $null }
 
-#================================================================================================================================================#
+    # Return the NetworkSpeed as a custom object
+    return [PSCustomObject]@{ Download = $downloadSpeed ; Upload = $uploadSpeed }
 
-function GetUploadSpeed {
-
-    # Get the network adapter
-    $networkAdapter = Get-NetAdapter | Where-Object {$_.Name -eq $networkAdapterName}
-
-    # If the network adapter is found, 
-    if ($networkAdapter) {
-        $networkStatistics1 = Get-NetAdapterStatistics -Name $networkAdapter.Name
-        Start-Sleep -Seconds 1
-        $networkStatistics2 = Get-NetAdapterStatistics -Name $networkAdapter.Name
-        $uploadSpeed = ($networkStatistics2.SentBytes - $networkStatistics1.SentBytes) * 8 / 1e6
-        return [Math]::Round($uploadSpeed)
-    } else {
-        return " X "
-    }
 }
 
 #================================================================================================================================================#
@@ -430,16 +438,21 @@ function GetHardwareMetrics {
     # Ensure OpenHardwareMonitor is running
     StartOpenHardwareMonitor
 
-    # Get the metrics
-    $cpuTemp       = GetCPUTemperature
-    $cpuLoad       = GetCPULoad
-    $cpuClock      = GetCPUClock
-    $gpuTemp       = GetGPUTemperature
-    $gpuCore       = GetGPUCoreLoad
-    $gpuMem        = GetGPUMemoryLoad
-    $ramLoad       = GetRAMLoad
-    $downloadSpeed = GetDownloadSpeed
-    $uploadSpeed   = GetUploadSpeed
+    # Get the OpenHardwareMonitor metrics whose visibility is enabled in settings 
+    if ( $cpuTempMetricShow  ) { $cpuTemp  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Temperature' AND Name LIKE '%CPU Package%'" -roundTo 2 } else { $cpuTemp  = $null }
+    if ( $cpuLoadMetricShow  ) { $cpuLoad  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%CPU Total%'"          -roundTo 2 } else { $cpuLoad  = $null }
+    if ( $cpuClockMetricShow ) { $cpuClock = GetCPUClock                                                                                                        } else { $cpuClock = $null }    
+    if ( $gpuTempMetricShow  ) { $gpuTemp  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Temperature' AND Name LIKE '%GPU%'"         -roundTo 2 } else { $gpuTemp  = $null }
+    if ( $gpuCoreMetricShow  ) { $gpuCore  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%GPU Core%'"           -roundTo 0 } else { $gpuCore  = $null }
+    if ( $gpuMemMetricShow   ) { $gpuMem   = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%GPU Memory%'"         -roundTo 2 } else { $gpuMem   = $null }
+    if ( $ramLoadMetricShow  ) { $ramLoad  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Data' AND Name LIKE '%Used Memory%'"        -roundTo 2 } else { $ramLoad  = $null }
+
+    # Get the $networkSpeed custom object if network related metrics visibility is enabled in settings. Else the metrics are $null.
+    if ( $downloadSpeedMetricShow -or $uploadSpeedMetricShow) { 
+        $networkSpeed  = GetNetworkSpeed
+        $downloadSpeed = $networkSpeed.Download
+        $uploadSpeed   = $networkSpeed.Upload
+    } else { $downloadSpeed = $null ; $uploadSpeed = $null }
 
     # Populate the $hardwareMetrics array
     $hardwareMetrics = @(
@@ -479,7 +492,7 @@ function GetHardwareMetrics {
                 if ( $debug ) { Write-Host "`$hardwareMetrics[$i].Line1 was not populated with missing spaces." -ForegroundColor Yellow }
             }
 
-            # Add the Name property string to the begining of the Line1 property string
+            # Add the Name property string to the beginning of the Line1 property string
             $hardwareMetrics[$i].Line1 = $hardwareMetrics[$i].Name + $hardwareMetrics[$i].Line1
             if ( $debug ) { Write-Host "`$hardwareMetrics[$i].Line1 was changed to:" -ForegroundColor Yellow ; Write-Host $hardwareMetrics[$i].Line1 }
 
@@ -499,11 +512,11 @@ function GetHardwareMetrics {
             # Ensures that the first metric in $hardwareMetrics array that has the property Show set to $true has no spacing behind it
             if ( $firstShownMetricFlag ) { $hardwareMetrics[$i].Space = "" ; $firstShownMetricFlag = $false }
 
-            # Adds the Space property string to the begining of Line1, Line2 and Line3 property strings
+            # Adds the Space property string to the beginning of Line1, Line2 and Line3 property strings
             $hardwareMetrics[$i].Line1 = $hardwareMetrics[$i].Space + $hardwareMetrics[$i].Line1
             $hardwareMetrics[$i].Line2 = $hardwareMetrics[$i].Space + $hardwareMetrics[$i].Line2
             $hardwareMetrics[$i].Line3 = $hardwareMetrics[$i].Space + $hardwareMetrics[$i].Line3
-            if ( $debug ) { Write-Host "Indentation/spacing was added to the begining of `$hardwareMetrics[$i].Line1, `$hardwareMetrics[$i].Line2 and `$hardwareMetrics[$i].Line3" -ForegroundColor Yellow }
+            if ( $debug ) { Write-Host "Indentation/spacing was added to the beginning of `$hardwareMetrics[$i].Line1, `$hardwareMetrics[$i].Line2 and `$hardwareMetrics[$i].Line3" -ForegroundColor Yellow }
 
         }
 
@@ -511,72 +524,6 @@ function GetHardwareMetrics {
 
     # Returns the fully populated and formatted $hardwareMetrics array
     return $hardwareMetrics
-
-}
-
-#================================================================================================================================================#
-
-function SetConsoleSize {
-    Param(
-        [parameter(Mandatory=$true)]
-        [int]$Height,
-        [parameter(Mandatory=$true)]
-        [int]$Width
-    )
-
-    $console = $host.ui.rawui
-    $ConBuffer  = $console.BufferSize
-    $ConSize = $console.WindowSize
-
-    $currWidth = $ConSize.Width
-    $currHeight = $ConSize.Height
-
-    # if height is too large, set to max allowed size
-    if ($Height -gt $host.UI.RawUI.MaxPhysicalWindowSize.Height) {
-        $Height = $host.UI.RawUI.MaxPhysicalWindowSize.Height
-    }
-
-    # if width is too large, set to max allowed size
-    if ($Width -gt $host.UI.RawUI.MaxPhysicalWindowSize.Width) {
-        $Width = $host.UI.RawUI.MaxPhysicalWindowSize.Width
-    }
-
-    # If the Buffer is wider than the new console setting, first reduce the width
-    If ($ConBuffer.Width -gt $Width ) {
-    $currWidth = $Width
-    }
-    # If the Buffer is higher than the new console setting, first reduce the height
-    If ($ConBuffer.Height -gt $Height ) {
-        $currHeight = $Height
-    }
-    # initial resizing if needed
-    $host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.size($currWidth,$currHeight)
-
-    # Set the Buffer
-    $host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.size($Width,$Height)
-
-    # Now set the WindowSize
-    $host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.size($Width,$Height)
-
-}
-
-#================================================================================================================================================#
-
-function GetAutoConsoleWidth {
-    Param(
-        [parameter(Mandatory=$true)]
-        [array]$hardwareMetrics
-    )
-
-    $line2Length = 0
-
-    for ($i = 0; $i -lt $hardwareMetrics.Length; $i++) {
-        if ( $hardwareMetrics[$i].Show ) { $line2Length += $hardwareMetrics[$i].Line2.Length }
-    }
-
-    $line2Length += ($indentation.Length * 2)
-
-    return $line2Length
 
 }
 
@@ -605,22 +552,27 @@ function DisplayHardwareMetrics {
     # New Line
     Write-Host ""
 
-    # Write Indentation
-    Write-Host $indentation -NoNewLine
+    # if $showLine2 enabled in settings
+    if ( $showLine2 ) {
 
-    # Write Line2
-    for ($i = 0; $i -lt $hardwareMetrics.Length; $i++) {
-        if ( $hardwareMetrics[$i].Show ) {
-            if ( $hardwareMetrics[$i].Flag ) {
-                Write-Host $hardwareMetrics[$i].Line2 -NoNewLine -ForegroundColor $flagColor 
-            } else {
-                Write-Host $hardwareMetrics[$i].Line2 -NoNewLine
+        # Write Indentation
+        Write-Host $indentation -NoNewLine
+
+        # Write Line2
+        for ($i = 0; $i -lt $hardwareMetrics.Length; $i++) {
+            if ( $hardwareMetrics[$i].Show ) {
+                if ( $hardwareMetrics[$i].Flag ) {
+                    Write-Host $hardwareMetrics[$i].Line2 -NoNewLine -ForegroundColor $flagColor 
+                } else {
+                    Write-Host $hardwareMetrics[$i].Line2 -NoNewLine
+                }
             }
         }
-    }
 
-    # New Line
-    Write-Host ""
+        # New Line
+        Write-Host ""
+
+    }
 
     # Write Indentation
     Write-Host $indentation -NoNewLine
@@ -639,7 +591,32 @@ function DisplayHardwareMetrics {
 }
 
 #================================================================================================================================================#
+
+function MainLoopSleep {
+    param (
+        [parameter(Mandatory=$true)]
+        [int]$sleepDuration
+    )
+
+    # Subtracts 1 second from $sleepDuration if network related metrics are enabled since GetNetworkSpeed function already has a 1 second sleep session
+    if ( $downloadSpeedMetricShow -or $uploadSpeedMetricShow ) { $sleepDuration -=1 }
+
+    # Make sure that the $sleepDuration is never less than 0 seconds.
+    if ( $sleepDuration -lt 0 ) { $sleepDuration = 0}
+
+    # Sleepy time
+    Start-Sleep -Seconds $sleepDuration
+
+}
+
+#================================================================================================================================================#
 #=MAIN=SCRIPT====================================================================================================================================#
+
+# Set console window title
+$host.ui.RawUI.WindowTitle = $consoleWindowTitle
+
+# If the user prefers that the console size is not changed by the script during main loop execution, store the console size now and restore it before the first iteration
+if (-not $changeConsoleSize) { $storedConsoleSize = $host.ui.rawui.WindowSize }
 
 # Shows the Disclaimer for this script if enabled in settings
 if ( $showDisclaimer ) { ShowDisclaimer }
@@ -650,7 +627,10 @@ if ( $createStartupShortcut ) { CreateStartupShortcut -targetPath $MyInvocation.
 # Shows the Sexy Splash Screen script if enabled in settings
 if ( $showSexySplashScreen ) { ShowSexySplashScreen }
 
-# Clean Start
+# Restore console size stored in the beginning of the MAIN SCRIPT section
+if (-not $changeConsoleSize) { SetConsoleSize -Height $storedConsoleSize.Height -Width $storedConsoleSize.Width }
+
+# Clean Start :)
 Clear-Host
 
 # Main Loop
@@ -659,21 +639,26 @@ while ($true) {
     # Populates and Formats the $hardwareMetrics array
     $hardwareMetrics = GetHardwareMetrics
 
-    # Changes the console size either manually or dynamically based on user settings
+    # Changes the console size either manually or automatically based on user settings
     if ($changeConsoleSize) { 
-        if ($manualConsoleSize) {
-            SetConsoleSize -Height $manualConsoleHeight -Width $manualConsoleWidth
+        if ($forceConsoleSize) {
+            # Manual console size, as defined in settings
+            try { SetConsoleSize -Height $forceConsoleHeight -Width $forceConsoleWidth } catch {}
         } else {
+            # Automatic console size
             SetConsoleSize -Height 3 -Width (GetAutoConsoleWidth -hardwareMetrics $hardwareMetrics)
         }
-    }
-    
+    } 
+
     # Displays the formatted $hardwareMetrics array.
     DisplayHardwareMetrics -hardwareMetrics $hardwareMetrics
     if ( $debug ) { pause }
     
-    # Reset the cursor position for the next iteration of the Main Loop, produces a result similiar to Clear-Host but without the distracting blinking
+    # Reset the cursor position for the next iteration of the Main Loop, produces a result similiar to Clear-Host but without the distracting blinking.
     [Console]::SetCursorPosition(0, 0)
+
+    # Run the MainLoopSleep function
+    MainLoopSleep -sleepDuration $mainLoopSleepDuration
     
 }
 
