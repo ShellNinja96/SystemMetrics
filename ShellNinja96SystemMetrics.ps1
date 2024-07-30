@@ -1,6 +1,10 @@
 #================================================================================================================================================#
 #=CHANGELOG======================================================================================================================================#
 
+<# 30.07.2024
+ - ADDED VARIABLE TO SPECIFY WHICH GPU CORE TO MONITOR
+#>
+
 <# 28.03.2024
  - CHANGED DISCLAIMER TO SHOW OHM REPOSITORY INSTEAD OF WEBSITE SINCE IT HAS BEEN DOWN FOR DAYS
  - ADDED OPTION TO DISABLE LINE 2
@@ -52,17 +56,18 @@ $shellNinja96 = @"
 <# SYSTEM SPECIFIC #>
 Set-ExecutionPolicy      Restricted                      # Reset system script execution policy
 $networkAdapterName      = "vEthernet (External Switch)" # Name of the Network Adapter whose speeds should be monitored
-$createStartupShortcut   = $true                         # Creates a shortcut for this script in the startup folder
+$gpuName                 = "/nvidiagpu/0"                # Name of the gpu you want to monitor. In case of doubt run the following command -> Get-WmiObject -Namespace "root\OpenHardwareMonitor" -Class "Sensor" | Select-Object Name, Parent, SensorType, Value
+$createStartupShortcut   = $false                        # Creates a shortcut for this script in the startup folder
 $replaceExistingShortcut = $false                        # If the shortcut already exists it gets replaced by a new one. $createStartupShortcut must also be set to true
 $mainLoopSleepDuration   = 1                             # Sleep time in seconds for each iteration of the main loop
 
 <# FLAG THRESHOLDS #>
-$cpuTempThreshold = 80.0                                 # Temperature in celsius at which the CPU temperature flag should be triggered
+$cpuTempThreshold = 90.0                                 # Temperature in celsius at which the CPU temperature flag should be triggered
 $cpuLoadThreshold = 90.0                                 # Load percentage at which the CPU load flag should be triggered
 $gpuTempThreshold = 80.0                                 # Temperature in celsius at which the GPU temperature flag should be triggered
 $gpuCoreThreshold = 90.0                                 # Load percentage at which the GPU core load flag should be triggered
 $gpuMemThreshold  = 90.0                                 # Load percentage at which the GPU memory load flag should be triggered
-$ramLoadThreshold = 14                                   # Load in GB at which the flag should be triggered
+$ramLoadThreshold = 60                                   # Load in GB at which the flag should be triggered
 
 <# PERSONALIZATION #>
 $indentation             = "  "                          # Indentation displayed at the beginning of each line
@@ -87,8 +92,8 @@ $downloadSpeedMetricName = "NETdown"                     # String displayed abov
 $downloadSpeedMetricShow = $true                         # Show the download speed metric
 $uploadSpeedMetricName   = "NETuplo"                     # String displayed above the upload speed metric
 $uploadSpeedMetricShow   = $true                         # Show the upload speed metric
-$showDisclaimer          = $true                         # Enable/disable the disclaimer displayment
-$showSexySplashScreen    = $true                         # Enable/disable a very sexy splash screen :)
+$showDisclaimer          = $false                        # Enable/disable the disclaimer displayment
+$showSexySplashScreen    = $false                        # Enable/disable a very sexy splash screen :)
 
 <# CONSOLE SETTINGS #>
 $consoleWindowTitle = "ShellNinja96 SystemMetrics"       # Change the console host window title in which this script is being executed
@@ -439,13 +444,16 @@ function GetHardwareMetrics {
     StartOpenHardwareMonitor
 
     # Get the OpenHardwareMonitor metrics whose visibility is enabled in settings 
+    if ( $cpuClockMetricShow ) { $cpuClock = GetCPUClock                                                                                                        } else { $cpuClock = $null }
     if ( $cpuTempMetricShow  ) { $cpuTemp  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Temperature' AND Name LIKE '%CPU Package%'" -roundTo 2 } else { $cpuTemp  = $null }
-    if ( $cpuLoadMetricShow  ) { $cpuLoad  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%CPU Total%'"          -roundTo 2 } else { $cpuLoad  = $null }
-    if ( $cpuClockMetricShow ) { $cpuClock = GetCPUClock                                                                                                        } else { $cpuClock = $null }    
+    if ( $cpuLoadMetricShow  ) { $cpuLoad  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%CPU Total%'"          -roundTo 2 } else { $cpuLoad  = $null }        
     if ( $gpuTempMetricShow  ) { $gpuTemp  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Temperature' AND Name LIKE '%GPU%'"         -roundTo 2 } else { $gpuTemp  = $null }
-    if ( $gpuCoreMetricShow  ) { $gpuCore  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%GPU Core%'"           -roundTo 0 } else { $gpuCore  = $null }
     if ( $gpuMemMetricShow   ) { $gpuMem   = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%GPU Memory%'"         -roundTo 2 } else { $gpuMem   = $null }
     if ( $ramLoadMetricShow  ) { $ramLoad  = GetOHMMetric -query "SELECT * FROM Sensor WHERE SensorType='Data' AND Name LIKE '%Used Memory%'"        -roundTo 2 } else { $ramLoad  = $null }
+    if ( $gpuCoreMetricShow  ) {
+        $query    = "SELECT * FROM Sensor WHERE SensorType='Load' AND Name LIKE '%GPU Core%' AND Parent LIKE '" + $gpuName + "'"
+        $gpuCore  = GetOHMMetric -query $query -roundTo 0
+    } else { $gpuCore  = $null }
 
     # Get the $networkSpeed custom object if network related metrics visibility is enabled in settings. Else the metrics are $null.
     if ( $downloadSpeedMetricShow -or $uploadSpeedMetricShow) { 
